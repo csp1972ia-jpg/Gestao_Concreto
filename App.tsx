@@ -78,11 +78,18 @@ function App() {
   // 3. Sync Auth with User Data
   useEffect(() => {
     if (auth.currentUser) {
+      const SUPER_ADMIN_EMAIL = 'cristianospaula1972@gmail.com';
+
       // If we have users loaded, try to find current user
       if (users.length > 0) {
         const foundUser = users.find(u => u.email === auth.currentUser?.email);
         if (foundUser) {
-          setUser(foundUser);
+          // FORCE ADMIN ROLE if email matches, regardless of what DB says
+          const finalUser = {
+            ...foundUser,
+            role: foundUser.email === SUPER_ADMIN_EMAIL ? UserRole.ADMIN : foundUser.role
+          };
+          setUser(finalUser);
           if (currentPage === 'login') setCurrentPage('pre-agendamento');
         } else {
           // Fallback if user exists in Auth but not in 'users' collection yet
@@ -90,7 +97,7 @@ function App() {
             id: auth.currentUser.uid,
             name: auth.currentUser.displayName || 'Novo Usuário',
             email: auth.currentUser.email || '',
-            role: UserRole.CONSULTANT,
+            role: auth.currentUser.email === SUPER_ADMIN_EMAIL ? UserRole.ADMIN : UserRole.CONSULTANT,
             avatar: auth.currentUser.photoURL || `https://ui-avatars.com/api/?name=${auth.currentUser.email}`
           };
           setUser(newUser);
@@ -102,7 +109,7 @@ function App() {
             id: auth.currentUser.uid,
             name: auth.currentUser.displayName || 'Usuário',
             email: auth.currentUser.email || '',
-            role: auth.currentUser.email === 'cristianospaula1972@gmail.com' ? UserRole.ADMIN : UserRole.CONSULTANT,
+            role: auth.currentUser.email === SUPER_ADMIN_EMAIL ? UserRole.ADMIN : UserRole.CONSULTANT,
             avatar: auth.currentUser.photoURL || `https://ui-avatars.com/api/?name=${auth.currentUser.email}`
           };
           setUser(newUser);
