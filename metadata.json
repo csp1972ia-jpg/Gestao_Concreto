@@ -1,0 +1,5 @@
+{
+  "name": "GestãoConcreto",
+  "description": "Sistema de gestão de agendamentos de serviços de concreto com perfis para Consultores e Administradores.",
+  "requestFramePermissions": []
+}

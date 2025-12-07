@@ -1,0 +1,161 @@
+import React, { useState } from 'react';
+import { auth } from '../services/firebase';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { firestoreAddUser } from '../services/apiService';
+import { UserRole } from '../types';
+import { Truck, LogIn, Loader2, AlertCircle, UserPlus } from 'lucide-react';
+
+export const Login: React.FC = () => {
+  const [isLogin, setIsLogin] = useState(true); // Toggle between Login and Register
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState(''); // Only for register
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+
+    try {
+      if (isLogin) {
+        // --- LOGIN ---
+        await signInWithEmailAndPassword(auth, email, password);
+      } else {
+        // --- REGISTER ---
+        if (password.length < 6) {
+          throw new Error('A senha deve ter pelo menos 6 caracteres.');
+        }
+
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        const user = userCredential.user;
+
+        // Update Auth Profile
+        await updateProfile(user, {
+          displayName: name,
+          photoURL: `https://ui-avatars.com/api/?name=${name}&background=random`
+        });
+
+        // Determine Role (Hardcoded admin for testing or default to CONSULTANT)
+        // Dica: Para facilitar seus testes, seu email específico ganha Admin. 
+        // Em produção, isso seria gerenciado pelo painel de gestão.
+        const role = email === 'cristianospaula1972@gmail.com' ? UserRole.ADMIN : UserRole.CONSULTANT;
+
+        // Create User Document in Firestore
+        await firestoreAddUser({
+          id: user.uid,
+          name: name,
+          email: email,
+          role: role,
+          avatar: user.photoURL || undefined
+        });
+      }
+    } catch (err: any) {
+      console.error(err);
+      let msg = isLogin ? "Falha ao fazer login." : "Falha ao criar conta.";
+      
+      if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
+        msg = "Email ou senha incorretos.";
+      } else if (err.code === 'auth/email-already-in-use') {
+        msg = "Este email já está cadastrado.";
+      } else if (err.code === 'auth/weak-password') {
+        msg = "A senha é muito fraca.";
+      } else if (err.message) {
+        msg = err.message;
+      }
+      
+      setError(msg);
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8 relative">
+        <div className="flex flex-col items-center mb-8">
+          <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-4 text-white shadow-lg">
+            <Truck size={32} />
+          </div>
+          <h1 className="text-2xl font-bold text-slate-800">SuperMix</h1>
+          <p className="text-slate-500 text-sm">
+            {isLogin ? 'Login do Sistema' : 'Criar Nova Conta'}
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {error && (
+            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm flex items-center">
+              <AlertCircle size={16} className="mr-2 flex-shrink-0" />
+              {error}
+            </div>
+          )}
+
+          {!isLogin && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Nome Completo</label>
+              <input
+                type="text"
+                required={!isLogin}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                placeholder="Seu Nome"
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+              placeholder="seu@email.com"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Senha</label>
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+              placeholder="••••••••"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg flex items-center justify-center transition-colors shadow-md hover:shadow-lg transform active:scale-95 duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? (
+              <Loader2 className="animate-spin" />
+            ) : isLogin ? (
+              <><LogIn size={20} className="mr-2" /> Entrar</>
+            ) : (
+              <><UserPlus size={20} className="mr-2" /> Cadastrar</>
+            )}
+          </button>
+        </form>
+
+        <div className="mt-6 text-center border-t border-slate-100 pt-4">
+          <button 
+            onClick={() => {
+              setIsLogin(!isLogin);
+              setError('');
+            }}
+            className="text-sm text-blue-600 hover:text-blue-800 font-medium transition-colors"
+          >
+            {isLogin ? 'Não tem uma conta? Crie agora' : 'Já tem conta? Faça Login'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
