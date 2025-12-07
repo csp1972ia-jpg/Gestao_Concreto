@@ -21,6 +21,8 @@ import {
 import { auth } from './services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 
+const SUPER_ADMIN_EMAIL = 'cristianospaula1972@gmail.com';
+
 function App() {
   // Global State
   const [user, setUser] = useState<User | null>(null);
@@ -31,13 +33,36 @@ function App() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [isLoadingData, setIsLoadingData] = useState(true);
+  
+  // NOTE: We removed 'isLoadingData' blocking the entire UI to prevent the "infinite spin" issue.
+  // The app will load the shell first, then data populates as it arrives.
 
-  // 1. Auth Listener
+  // 1. Auth Listener - The Critical Path
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
-        // User logged in
+        // --- IMMEDIATE ACCESS LOGIC ---
+        // We construct the user object immediately from Auth data.
+        // We do NOT wait for Firestore to tell us who the user is.
+        // This solves the "F5 required" and "Spinning" issues.
+        
+        const isSuperAdmin = firebaseUser.email === SUPER_ADMIN_EMAIL;
+        
+        const currentUser: User = {
+          id: firebaseUser.uid,
+          name: firebaseUser.displayName || 'Usuário',
+          email: firebaseUser.email || '',
+          // FORCE ADMIN ROLE if email matches
+          role: isSuperAdmin ? UserRole.ADMIN : UserRole.CONSULTANT,
+          avatar: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${firebaseUser.email}`
+        };
+
+        setUser(currentUser);
+        
+        // Only redirect to home if we were on login page
+        if (currentPage === 'login') {
+          setCurrentPage('pre-agendamento');
+        }
       } else {
         setUser(null);
         setCurrentPage('login');
@@ -45,78 +70,33 @@ function App() {
       setAuthInitialized(true);
     });
     return () => unsubscribe();
-  }, []);
+  }, []); // Run once on mount
 
-  // 2. Data Listeners (Real-time)
+  // 2. Data Listeners (Real-time) - Run only when user is logged in
   useEffect(() => {
-    if (!auth.currentUser) return;
+    if (!user) return;
 
-    // Safety Valve: Force loading to complete after 3.5 seconds if DB hangs
-    // This prevents the "infinite spinner" if Firestore rules block access
-    const safetyTimer = setTimeout(() => {
-      if (isLoadingData) {
-        console.warn("Database response timed out. Forcing app entry.");
-        setIsLoadingData(false);
-      }
-    }, 3500);
-
+    // We subscribe to data, but we don't block the UI.
+    // The components will just show empty lists until data arrives.
+    
     const unsubOrders = subscribeToOrders(setOrders);
     const unsubBranches = subscribeToBranches(setBranches);
+    
+    // We fetch users to keep the "Admin Management" list up to date, 
+    // but we don't use it to determine the CURRENT user's role anymore (to be safe).
     const unsubUsers = subscribeToUsers((fetchedUsers) => {
       setUsers(fetchedUsers);
-      setIsLoadingData(false); // Success path
+      
+      // Optional: If we want to sync the avatar or name from DB later, we could do it here,
+      // but strictly adhering to Auth data for the session is faster and safer for now.
     });
 
     return () => {
-      clearTimeout(safetyTimer);
       unsubOrders();
       unsubBranches();
       unsubUsers();
     };
-  }, [authInitialized, user]); // Re-run when user state changes
-
-  // 3. Sync Auth with User Data
-  useEffect(() => {
-    if (auth.currentUser) {
-      const SUPER_ADMIN_EMAIL = 'cristianospaula1972@gmail.com';
-
-      // If we have users loaded, try to find current user
-      if (users.length > 0) {
-        const foundUser = users.find(u => u.email === auth.currentUser?.email);
-        if (foundUser) {
-          // FORCE ADMIN ROLE if email matches, regardless of what DB says
-          const finalUser = {
-            ...foundUser,
-            role: foundUser.email === SUPER_ADMIN_EMAIL ? UserRole.ADMIN : foundUser.role
-          };
-          setUser(finalUser);
-          if (currentPage === 'login') setCurrentPage('pre-agendamento');
-        } else {
-          // Fallback if user exists in Auth but not in 'users' collection yet
-          const newUser: User = {
-            id: auth.currentUser.uid,
-            name: auth.currentUser.displayName || 'Novo Usuário',
-            email: auth.currentUser.email || '',
-            role: auth.currentUser.email === SUPER_ADMIN_EMAIL ? UserRole.ADMIN : UserRole.CONSULTANT,
-            avatar: auth.currentUser.photoURL || `https://ui-avatars.com/api/?name=${auth.currentUser.email}`
-          };
-          setUser(newUser);
-          if (currentPage === 'login') setCurrentPage('pre-agendamento');
-        }
-      } else if (!isLoadingData) {
-         // Users loaded but empty (or blocked), so we create a session user from Auth data
-          const newUser: User = {
-            id: auth.currentUser.uid,
-            name: auth.currentUser.displayName || 'Usuário',
-            email: auth.currentUser.email || '',
-            role: auth.currentUser.email === SUPER_ADMIN_EMAIL ? UserRole.ADMIN : UserRole.CONSULTANT,
-            avatar: auth.currentUser.photoURL || `https://ui-avatars.com/api/?name=${auth.currentUser.email}`
-          };
-          setUser(newUser);
-          if (currentPage === 'login') setCurrentPage('pre-agendamento');
-      }
-    }
-  }, [auth.currentUser, users, isLoadingData]);
+  }, [user?.id]); // Re-subscribe only if user ID changes
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -124,12 +104,12 @@ function App() {
     setCurrentPage('login');
   };
 
-  // --- RENDER: LOADING ---
+  // --- RENDER: LOADING (Only for initial Auth check) ---
   if (!authInitialized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-100 flex-col gap-4">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        <p className="text-slate-500">Iniciando sistema...</p>
+        <p className="text-slate-500 font-medium">Iniciando sistema...</p>
       </div>
     );
   }

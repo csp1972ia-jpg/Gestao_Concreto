@@ -22,6 +22,8 @@ export const Login: React.FC = () => {
       if (isLogin) {
         // --- LOGIN ---
         await signInWithEmailAndPassword(auth, email, password);
+        // Successful login will trigger onAuthStateChanged in App.tsx
+        // causing this component to unmount.
       } else {
         // --- REGISTER ---
         if (password.length < 6) {
@@ -37,19 +39,22 @@ export const Login: React.FC = () => {
           photoURL: `https://ui-avatars.com/api/?name=${name}&background=random`
         });
 
-        // Determine Role (Hardcoded admin for testing or default to CONSULTANT)
-        // Dica: Para facilitar seus testes, seu email específico ganha Admin. 
-        // Em produção, isso seria gerenciado pelo painel de gestão.
+        // Determine Role
         const role = email === 'cristianospaula1972@gmail.com' ? UserRole.ADMIN : UserRole.CONSULTANT;
 
         // Create User Document in Firestore
-        await firestoreAddUser({
-          id: user.uid,
-          name: name,
-          email: email,
-          role: role,
-          avatar: user.photoURL || undefined
-        });
+        // We await this but catch errors so it doesn't block the UI if DB fails
+        try {
+          await firestoreAddUser({
+            id: user.uid,
+            name: name,
+            email: email,
+            role: role,
+            avatar: user.photoURL || undefined
+          });
+        } catch (dbError) {
+          console.error("Profile creation warning:", dbError);
+        }
       }
     } catch (err: any) {
       console.error(err);
@@ -66,6 +71,8 @@ export const Login: React.FC = () => {
       }
       
       setError(msg);
+    } finally {
+      // Ensure loading stops if we are still on this screen (e.g. error occurred)
       setLoading(false);
     }
   };
@@ -88,6 +95,14 @@ export const Login: React.FC = () => {
             <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm flex items-center">
               <AlertCircle size={16} className="mr-2 flex-shrink-0" />
               {error}
+              {error.includes("já está cadastrado") && (
+                <button 
+                  onClick={() => setIsLogin(true)}
+                  className="ml-auto text-xs font-bold underline hover:text-red-800"
+                >
+                  Fazer Login
+                </button>
+              )}
             </div>
           )}
 
