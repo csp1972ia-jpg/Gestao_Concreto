@@ -22,16 +22,8 @@ export const Login: React.FC = () => {
       if (isLogin) {
         // --- LOGIN ---
         await signInWithEmailAndPassword(auth, email, password);
-        // Se chegou aqui, o login foi sucesso.
-        // O App.tsx deve detectar a mudança e desmontar este componente.
-        
-        // HACK PARA VERCEL: Se em 1.5 segundos o componente ainda estiver montado,
-        // forçamos um reload da página para garantir que o App pegue o usuário.
-        setTimeout(() => {
-           console.log("Login: Forçando atualização de estado...");
-           window.location.reload();
-        }, 1500);
-
+        // O onAuthStateChanged no App.tsx detectará a mudança automaticamente
+        // e desmontará este componente Login.
       } else {
         // --- CADASTRO ---
         if (password.length < 6) {
@@ -61,11 +53,6 @@ export const Login: React.FC = () => {
         } catch (dbError) {
           console.error("Aviso criação perfil:", dbError);
         }
-        
-        // Também forçamos reload no cadastro se necessário
-        setTimeout(() => {
-           window.location.reload();
-        }, 1500);
       }
     } catch (err: any) {
       console.error(err);
@@ -82,7 +69,7 @@ export const Login: React.FC = () => {
       }
       
       setError(msg);
-      setLoading(false); // Só paramos o loading se der erro
+      setLoading(false); // Só paramos o loading se der erro. Se der sucesso, o componente desmonta.
     }
   };
 

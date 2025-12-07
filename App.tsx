@@ -27,7 +27,11 @@ const SUPER_ADMIN_EMAIL = 'cristianospaula1972@gmail.com';
 function App() {
   // Global State
   const [user, setUser] = useState<User | null>(null);
-  const [currentPage, setCurrentPage] = useState<string>('login');
+  
+  // CORREÇÃO CRÍTICA: O estado inicial DEVE ser uma página válida interna.
+  // A tela de Login é controlada pelo 'if (!user)', não por esta variável.
+  const [currentPage, setCurrentPage] = useState<string>('pre-agendamento');
+  
   const [authInitialized, setAuthInitialized] = useState(false);
   
   // Data State
@@ -37,19 +41,12 @@ function App() {
   
   // 1. Auth Listener - Caminho Crítico
   useEffect(() => {
-    console.log("App: Iniciando listener de Auth...");
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
-        console.log("App: Usuário detectado", firebaseUser.email);
-        
-        // --- LÓGICA DE ACESSO IMEDIATO ---
         // Normaliza o email para garantir que a comparação funcione
-        // mesmo se o usuário digitou "Cristiano..." ou tem espaços.
         const normalizedEmail = firebaseUser.email ? firebaseUser.email.toLowerCase().trim() : '';
         const isSuperAdmin = normalizedEmail === SUPER_ADMIN_EMAIL;
         
-        console.log(`App: Check Admin - Email: ${normalizedEmail} | É Admin? ${isSuperAdmin}`);
-
         const currentUser: User = {
           id: firebaseUser.uid,
           name: firebaseUser.displayName || 'Usuário',
@@ -60,15 +57,10 @@ function App() {
         };
 
         setUser(currentUser);
-        
-        // Redireciona para a home se estiver no login
-        if (currentPage === 'login') {
-          setCurrentPage('pre-agendamento');
-        }
       } else {
-        console.log("App: Sem usuário logado");
         setUser(null);
-        setCurrentPage('login');
+        // Resetamos para a página inicial padrão ao deslogar
+        setCurrentPage('pre-agendamento');
       }
       setAuthInitialized(true);
     });
@@ -94,10 +86,9 @@ function App() {
   const handleLogout = async () => {
     await signOut(auth);
     setUser(null);
-    setCurrentPage('login');
   };
 
-  // --- RENDER: CARREGANDO (Apenas checagem inicial) ---
+  // --- RENDER: CARREGANDO (Apenas checagem inicial do Firebase) ---
   if (!authInitialized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-100 flex-col gap-4">
@@ -107,12 +98,13 @@ function App() {
     );
   }
 
-  // --- RENDER: LOGIN ---
+  // --- RENDER: LOGIN (Se não houver usuário) ---
   if (!user) {
     return <Login />;
   }
 
-  // --- RENDER: APP PRINCIPAL ---
+  // --- RENDER: APP PRINCIPAL (Se houver usuário) ---
+  // A variável currentPage define qual componente filho renderizar
   return (
     <Layout 
       currentUser={user} 
