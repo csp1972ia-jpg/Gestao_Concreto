@@ -6,10 +6,10 @@ import { UserRole } from '../types';
 import { Truck, LogIn, Loader2, AlertCircle, UserPlus } from 'lucide-react';
 
 export const Login: React.FC = () => {
-  const [isLogin, setIsLogin] = useState(true); // Toggle between Login and Register
+  const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState(''); // Only for register
+  const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -22,10 +22,18 @@ export const Login: React.FC = () => {
       if (isLogin) {
         // --- LOGIN ---
         await signInWithEmailAndPassword(auth, email, password);
-        // Successful login will trigger onAuthStateChanged in App.tsx
-        // causing this component to unmount.
+        // Se chegou aqui, o login foi sucesso.
+        // O App.tsx deve detectar a mudança e desmontar este componente.
+        
+        // HACK PARA VERCEL: Se em 1.5 segundos o componente ainda estiver montado,
+        // forçamos um reload da página para garantir que o App pegue o usuário.
+        setTimeout(() => {
+           console.log("Login: Forçando atualização de estado...");
+           window.location.reload();
+        }, 1500);
+
       } else {
-        // --- REGISTER ---
+        // --- CADASTRO ---
         if (password.length < 6) {
           throw new Error('A senha deve ter pelo menos 6 caracteres.');
         }
@@ -33,28 +41,31 @@ export const Login: React.FC = () => {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         const user = userCredential.user;
 
-        // Update Auth Profile
         await updateProfile(user, {
           displayName: name,
           photoURL: `https://ui-avatars.com/api/?name=${name}&background=random`
         });
 
-        // Determine Role
-        const role = email === 'cristianospaula1972@gmail.com' ? UserRole.ADMIN : UserRole.CONSULTANT;
+        // Determina cargo baseado no email (normalizado)
+        const normalizedEmail = email.toLowerCase().trim();
+        const role = normalizedEmail === 'cristianospaula1972@gmail.com' ? UserRole.ADMIN : UserRole.CONSULTANT;
 
-        // Create User Document in Firestore
-        // We await this but catch errors so it doesn't block the UI if DB fails
         try {
           await firestoreAddUser({
             id: user.uid,
             name: name,
-            email: email,
+            email: normalizedEmail,
             role: role,
             avatar: user.photoURL || undefined
           });
         } catch (dbError) {
-          console.error("Profile creation warning:", dbError);
+          console.error("Aviso criação perfil:", dbError);
         }
+        
+        // Também forçamos reload no cadastro se necessário
+        setTimeout(() => {
+           window.location.reload();
+        }, 1500);
       }
     } catch (err: any) {
       console.error(err);
@@ -71,9 +82,7 @@ export const Login: React.FC = () => {
       }
       
       setError(msg);
-    } finally {
-      // Ensure loading stops if we are still on this screen (e.g. error occurred)
-      setLoading(false);
+      setLoading(false); // Só paramos o loading se der erro
     }
   };
 

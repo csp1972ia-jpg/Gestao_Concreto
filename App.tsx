@@ -21,6 +21,7 @@ import {
 import { auth } from './services/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 
+// Email mestre normalizado (tudo minúsculo)
 const SUPER_ADMIN_EMAIL = 'cristianospaula1972@gmail.com';
 
 function App() {
@@ -34,69 +35,61 @@ function App() {
   const [branches, setBranches] = useState<Branch[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   
-  // NOTE: We removed 'isLoadingData' blocking the entire UI to prevent the "infinite spin" issue.
-  // The app will load the shell first, then data populates as it arrives.
-
-  // 1. Auth Listener - The Critical Path
+  // 1. Auth Listener - Caminho Crítico
   useEffect(() => {
+    console.log("App: Iniciando listener de Auth...");
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
-        // --- IMMEDIATE ACCESS LOGIC ---
-        // We construct the user object immediately from Auth data.
-        // We do NOT wait for Firestore to tell us who the user is.
-        // This solves the "F5 required" and "Spinning" issues.
+        console.log("App: Usuário detectado", firebaseUser.email);
         
-        const isSuperAdmin = firebaseUser.email === SUPER_ADMIN_EMAIL;
+        // --- LÓGICA DE ACESSO IMEDIATO ---
+        // Normaliza o email para garantir que a comparação funcione
+        // mesmo se o usuário digitou "Cristiano..." ou tem espaços.
+        const normalizedEmail = firebaseUser.email ? firebaseUser.email.toLowerCase().trim() : '';
+        const isSuperAdmin = normalizedEmail === SUPER_ADMIN_EMAIL;
         
+        console.log(`App: Check Admin - Email: ${normalizedEmail} | É Admin? ${isSuperAdmin}`);
+
         const currentUser: User = {
           id: firebaseUser.uid,
           name: firebaseUser.displayName || 'Usuário',
-          email: firebaseUser.email || '',
-          // FORCE ADMIN ROLE if email matches
+          email: normalizedEmail,
+          // FORÇA O CARGO DE ADMIN se o email bater
           role: isSuperAdmin ? UserRole.ADMIN : UserRole.CONSULTANT,
           avatar: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${firebaseUser.email}`
         };
 
         setUser(currentUser);
         
-        // Only redirect to home if we were on login page
+        // Redireciona para a home se estiver no login
         if (currentPage === 'login') {
           setCurrentPage('pre-agendamento');
         }
       } else {
+        console.log("App: Sem usuário logado");
         setUser(null);
         setCurrentPage('login');
       }
       setAuthInitialized(true);
     });
     return () => unsubscribe();
-  }, []); // Run once on mount
+  }, []); // Executa apenas uma vez no mount
 
-  // 2. Data Listeners (Real-time) - Run only when user is logged in
+  // 2. Listeners de Dados (Tempo Real) - Apenas quando logado
   useEffect(() => {
     if (!user) return;
 
-    // We subscribe to data, but we don't block the UI.
-    // The components will just show empty lists until data arrives.
-    
+    // Subscreve aos dados sem bloquear a UI
     const unsubOrders = subscribeToOrders(setOrders);
     const unsubBranches = subscribeToBranches(setBranches);
-    
-    // We fetch users to keep the "Admin Management" list up to date, 
-    // but we don't use it to determine the CURRENT user's role anymore (to be safe).
-    const unsubUsers = subscribeToUsers((fetchedUsers) => {
-      setUsers(fetchedUsers);
-      
-      // Optional: If we want to sync the avatar or name from DB later, we could do it here,
-      // but strictly adhering to Auth data for the session is faster and safer for now.
-    });
+    const unsubUsers = subscribeToUsers(setUsers);
 
     return () => {
       unsubOrders();
       unsubBranches();
       unsubUsers();
     };
-  }, [user?.id]); // Re-subscribe only if user ID changes
+  }, [user?.id]); 
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -104,7 +97,7 @@ function App() {
     setCurrentPage('login');
   };
 
-  // --- RENDER: LOADING (Only for initial Auth check) ---
+  // --- RENDER: CARREGANDO (Apenas checagem inicial) ---
   if (!authInitialized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-100 flex-col gap-4">
@@ -119,7 +112,7 @@ function App() {
     return <Login />;
   }
 
-  // --- RENDER: APP ---
+  // --- RENDER: APP PRINCIPAL ---
   return (
     <Layout 
       currentUser={user} 
