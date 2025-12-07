@@ -2,14 +2,14 @@ import React, { useState } from 'react';
 import { Order, Branch, User, OrderStatus, UserRole } from '../types';
 import { generateId, formatDate } from '../services/apiService';
 import { StatusBadge } from '../components/StatusBadge';
-import { Plus, Search, Filter, CheckCircle, XCircle, Clock, Edit2 } from 'lucide-react';
+import { Plus, Search, Filter, CheckCircle, XCircle, Clock, Loader2 } from 'lucide-react';
 
 interface PreSchedulingProps {
   currentUser: User;
   orders: Order[];
   branches: Branch[];
   onAddOrder: (order: Order) => void;
-  onUpdateOrder: (order: Order) => void;
+  onUpdateOrder: (order: Order) => Promise<void>; // Updated to support async
   onDeleteOrder: (id: string) => void;
 }
 
@@ -22,6 +22,7 @@ export const PreScheduling: React.FC<PreSchedulingProps> = ({
 }) => {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [processingId, setProcessingId] = useState<string | null>(null);
   
   // New Order Form State
   const [newOrder, setNewOrder] = useState<Partial<Order>>({
@@ -86,21 +87,31 @@ export const PreScheduling: React.FC<PreSchedulingProps> = ({
     setNewOrder({ volume: 0, dischargeType: 'BOMBEADO', fck: '', contract: '', clientName: '', contactName: '', phone: '', observation: '' });
   };
 
-  const handleStatusChange = (order: Order, newStatus: OrderStatus, note?: string) => {
-    const updatedOrder = {
-      ...order,
-      status: newStatus,
-      adminNote: note,
-      history: [
-        ...order.history,
-        {
-          date: new Date().toISOString(),
-          action: `Status alterado para ${newStatus}`,
-          user: currentUser.name
-        }
-      ]
-    };
-    onUpdateOrder(updatedOrder);
+  const handleStatusChange = async (order: Order, newStatus: OrderStatus, note?: string) => {
+    if (processingId) return;
+    setProcessingId(order.id);
+    
+    try {
+      const updatedOrder = {
+        ...order,
+        status: newStatus,
+        adminNote: note || '',
+        history: [
+          ...order.history,
+          {
+            date: new Date().toISOString(),
+            action: `Status alterado para ${newStatus}`,
+            user: currentUser.name
+          }
+        ]
+      };
+      // We explicitly await here to keep the spinner showing until done
+      await onUpdateOrder(updatedOrder);
+    } catch (e) {
+      // Error is already alerted in apiService, but we catch to ensure spinner stops
+    } finally {
+      setProcessingId(null);
+    }
   };
 
   return (
@@ -174,15 +185,19 @@ export const PreScheduling: React.FC<PreSchedulingProps> = ({
                   <div className="flex gap-2">
                     <button 
                       onClick={() => handleStatusChange(order, OrderStatus.REJECTED)}
-                      className="px-3 py-1.5 border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50 flex items-center"
+                      disabled={processingId === order.id}
+                      className={`px-3 py-1.5 border border-red-200 text-red-600 rounded-lg text-sm hover:bg-red-50 flex items-center ${processingId === order.id ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                      <XCircle size={16} className="mr-1" /> Reprovar
+                      {processingId === order.id ? <Loader2 className="animate-spin mr-1" size={16}/> : <XCircle size={16} className="mr-1" />}
+                      Reprovar
                     </button>
                     <button 
                       onClick={() => handleStatusChange(order, OrderStatus.APPROVED)}
-                      className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 flex items-center shadow-sm"
+                      disabled={processingId === order.id}
+                      className={`px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 flex items-center shadow-sm ${processingId === order.id ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                      <CheckCircle size={16} className="mr-1" /> Aprovar
+                      {processingId === order.id ? <Loader2 className="animate-spin mr-1" size={16}/> : <CheckCircle size={16} className="mr-1" />}
+                      Aprovar
                     </button>
                   </div>
                 )}

@@ -29,6 +29,18 @@ export const formatDate = (dateString: string) => {
   return new Intl.DateTimeFormat('pt-BR').format(correctedDate);
 };
 
+// --- Helper: Clean Data for Firestore ---
+// Firestore crashes if you send 'undefined'. This removes those keys.
+const cleanData = (data: any) => {
+  const cleaned = { ...data };
+  Object.keys(cleaned).forEach(key => {
+    if (cleaned[key] === undefined) {
+      delete cleaned[key];
+    }
+  });
+  return cleaned;
+};
+
 // --- Firestore Operations ---
 
 // 1. Subscribe to Collections (Real-time updates)
@@ -57,11 +69,8 @@ export const subscribeToBranches = (callback: (branches: Branch[]) => void) => {
     return onSnapshot(collection(db, 'branches'), 
       (snapshot) => {
         const branches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
-        // Seed if empty (and we have write permission, otherwise just return empty)
         if (branches.length === 0) {
-          // Attempt seed, but catch error silently if permission denied
           SEED_BRANCHES.forEach(b => setDoc(doc(db, 'branches', b.id), b).catch(err => console.log("Seed blocked", err)));
-          // We return the seed data locally so UI looks good immediately
           callback(SEED_BRANCHES);
         } else {
           callback(branches);
@@ -69,7 +78,6 @@ export const subscribeToBranches = (callback: (branches: Branch[]) => void) => {
       },
       (error) => {
         console.error("Error subscribing to branches:", error);
-        // Fallback to mock data if DB fails
         callback(SEED_BRANCHES);
       }
     );
@@ -88,7 +96,7 @@ export const subscribeToUsers = (callback: (users: User[]) => void) => {
       },
       (error) => {
         console.error("Error subscribing to users:", error);
-        callback([]); // Return empty list on error
+        callback([]); 
       }
     );
   } catch (e) {
@@ -98,23 +106,24 @@ export const subscribeToUsers = (callback: (users: User[]) => void) => {
 };
 
 // 2. CRUD Operations
-// Wrapped in try/catch to prevent UI crashes if permission denied
 export const firestoreAddOrder = async (order: Order) => {
   try {
-    await setDoc(doc(db, 'orders', order.id), order);
-  } catch (error) {
+    await setDoc(doc(db, 'orders', order.id), cleanData(order));
+  } catch (error: any) {
     console.error("Error adding order:", error);
-    alert("Erro ao salvar: Verifique sua conexão ou permissões.");
+    alert(`Erro ao salvar: ${error.message}`);
   }
 };
 
 export const firestoreUpdateOrder = async (order: Order) => {
   try {
     const orderRef = doc(db, 'orders', order.id);
-    await updateDoc(orderRef, { ...order });
-  } catch (error) {
+    // cleanData is crucial here to avoid "Unsupported field value: undefined"
+    await updateDoc(orderRef, cleanData(order));
+  } catch (error: any) {
     console.error("Error updating order:", error);
-    alert("Erro ao atualizar.");
+    alert(`Erro ao atualizar: ${error.message}`);
+    throw error; // Re-throw to handle UI loading states
   }
 };
 
@@ -128,7 +137,7 @@ export const firestoreDeleteOrder = async (id: string) => {
 
 export const firestoreAddBranch = async (branch: Branch) => {
   try {
-    await setDoc(doc(db, 'branches', branch.id), branch);
+    await setDoc(doc(db, 'branches', branch.id), cleanData(branch));
   } catch (error) {
     console.error("Error adding branch:", error);
   }
@@ -144,10 +153,9 @@ export const firestoreDeleteBranch = async (id: string) => {
 
 export const firestoreAddUser = async (user: User) => {
   try {
-    await setDoc(doc(db, 'users', user.id), user);
+    await setDoc(doc(db, 'users', user.id), cleanData(user));
   } catch (error) {
     console.error("Error adding user profile:", error);
-    // Don't alert here, it might happen on login/register if rules are strict
   }
 };
 
