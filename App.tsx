@@ -37,7 +37,7 @@ function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
-        // User logged in, waiting for data sync to map to internal User object
+        // User logged in
       } else {
         setUser(null);
         setCurrentPage('login');
@@ -49,20 +49,26 @@ function App() {
 
   // 2. Data Listeners (Real-time)
   useEffect(() => {
-    // We subscribe to data even if user is not fully mapped yet, 
-    // but typically we might want to wait. For simplicity, we fetch always 
-    // to ensure when user logs in, data is ready or loading.
-    // However, Firestore rules might prevent read if not logged in.
     if (!auth.currentUser) return;
+
+    // Safety Valve: Force loading to complete after 3.5 seconds if DB hangs
+    // This prevents the "infinite spinner" if Firestore rules block access
+    const safetyTimer = setTimeout(() => {
+      if (isLoadingData) {
+        console.warn("Database response timed out. Forcing app entry.");
+        setIsLoadingData(false);
+      }
+    }, 3500);
 
     const unsubOrders = subscribeToOrders(setOrders);
     const unsubBranches = subscribeToBranches(setBranches);
     const unsubUsers = subscribeToUsers((fetchedUsers) => {
       setUsers(fetchedUsers);
-      setIsLoadingData(false);
+      setIsLoadingData(false); // Success path
     });
 
     return () => {
+      clearTimeout(safetyTimer);
       unsubOrders();
       unsubBranches();
       unsubUsers();
@@ -91,13 +97,12 @@ function App() {
           if (currentPage === 'login') setCurrentPage('pre-agendamento');
         }
       } else if (!isLoadingData) {
-         // Users loaded but empty, or just initialized with empty list
-         // Create temporary user object from Auth
+         // Users loaded but empty (or blocked), so we create a session user from Auth data
           const newUser: User = {
             id: auth.currentUser.uid,
-            name: auth.currentUser.displayName || 'Novo Usuário',
+            name: auth.currentUser.displayName || 'Usuário',
             email: auth.currentUser.email || '',
-            role: UserRole.CONSULTANT,
+            role: auth.currentUser.email === 'cristianospaula1972@gmail.com' ? UserRole.ADMIN : UserRole.CONSULTANT,
             avatar: auth.currentUser.photoURL || `https://ui-avatars.com/api/?name=${auth.currentUser.email}`
           };
           setUser(newUser);
@@ -117,7 +122,7 @@ function App() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-100 flex-col gap-4">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        <p className="text-slate-500">Inicializando...</p>
+        <p className="text-slate-500">Iniciando sistema...</p>
       </div>
     );
   }

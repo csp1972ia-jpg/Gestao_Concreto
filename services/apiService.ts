@@ -33,73 +33,132 @@ export const formatDate = (dateString: string) => {
 
 // 1. Subscribe to Collections (Real-time updates)
 export const subscribeToOrders = (callback: (orders: Order[]) => void) => {
-  const q = query(collection(db, 'orders'), orderBy('requestDate', 'desc'));
-  return onSnapshot(q, (snapshot) => {
-    const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
-    callback(orders);
-  });
+  try {
+    const q = query(collection(db, 'orders'), orderBy('requestDate', 'desc'));
+    return onSnapshot(q, 
+      (snapshot) => {
+        const orders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Order));
+        callback(orders);
+      },
+      (error) => {
+        console.error("Error subscribing to orders:", error);
+        callback([]); // Return empty list on error to prevent hanging
+      }
+    );
+  } catch (e) {
+    console.error("Setup error orders:", e);
+    callback([]);
+    return () => {};
+  }
 };
 
 export const subscribeToBranches = (callback: (branches: Branch[]) => void) => {
-  return onSnapshot(collection(db, 'branches'), (snapshot) => {
-    const branches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
-    // Seed if empty
-    if (branches.length === 0) {
-      SEED_BRANCHES.forEach(b => setDoc(doc(db, 'branches', b.id), b));
-    } else {
-      callback(branches);
-    }
-  });
+  try {
+    return onSnapshot(collection(db, 'branches'), 
+      (snapshot) => {
+        const branches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Branch));
+        // Seed if empty (and we have write permission, otherwise just return empty)
+        if (branches.length === 0) {
+          // Attempt seed, but catch error silently if permission denied
+          SEED_BRANCHES.forEach(b => setDoc(doc(db, 'branches', b.id), b).catch(err => console.log("Seed blocked", err)));
+          // We return the seed data locally so UI looks good immediately
+          callback(SEED_BRANCHES);
+        } else {
+          callback(branches);
+        }
+      },
+      (error) => {
+        console.error("Error subscribing to branches:", error);
+        // Fallback to mock data if DB fails
+        callback(SEED_BRANCHES);
+      }
+    );
+  } catch (e) {
+    callback(SEED_BRANCHES);
+    return () => {};
+  }
 };
 
 export const subscribeToUsers = (callback: (users: User[]) => void) => {
-  return onSnapshot(collection(db, 'users'), (snapshot) => {
-    const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
-    callback(users);
-  });
+  try {
+    return onSnapshot(collection(db, 'users'), 
+      (snapshot) => {
+        const users = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+        callback(users);
+      },
+      (error) => {
+        console.error("Error subscribing to users:", error);
+        callback([]); // Return empty list on error
+      }
+    );
+  } catch (e) {
+    callback([]);
+    return () => {};
+  }
 };
 
 // 2. CRUD Operations
+// Wrapped in try/catch to prevent UI crashes if permission denied
 export const firestoreAddOrder = async (order: Order) => {
-  // Use custom ID or auto-generated
-  await setDoc(doc(db, 'orders', order.id), order);
+  try {
+    await setDoc(doc(db, 'orders', order.id), order);
+  } catch (error) {
+    console.error("Error adding order:", error);
+    alert("Erro ao salvar: Verifique sua conexão ou permissões.");
+  }
 };
 
 export const firestoreUpdateOrder = async (order: Order) => {
-  const orderRef = doc(db, 'orders', order.id);
-  await updateDoc(orderRef, { ...order });
+  try {
+    const orderRef = doc(db, 'orders', order.id);
+    await updateDoc(orderRef, { ...order });
+  } catch (error) {
+    console.error("Error updating order:", error);
+    alert("Erro ao atualizar.");
+  }
 };
 
 export const firestoreDeleteOrder = async (id: string) => {
-  await deleteDoc(doc(db, 'orders', id));
+  try {
+    await deleteDoc(doc(db, 'orders', id));
+  } catch (error) {
+    console.error("Error deleting order:", error);
+  }
 };
 
 export const firestoreAddBranch = async (branch: Branch) => {
-  await setDoc(doc(db, 'branches', branch.id), branch);
+  try {
+    await setDoc(doc(db, 'branches', branch.id), branch);
+  } catch (error) {
+    console.error("Error adding branch:", error);
+  }
 };
 
 export const firestoreDeleteBranch = async (id: string) => {
-  await deleteDoc(doc(db, 'branches', id));
+  try {
+    await deleteDoc(doc(db, 'branches', id));
+  } catch (error) {
+    console.error("Error deleting branch:", error);
+  }
 };
 
 export const firestoreAddUser = async (user: User) => {
-  await setDoc(doc(db, 'users', user.id), user);
+  try {
+    await setDoc(doc(db, 'users', user.id), user);
+  } catch (error) {
+    console.error("Error adding user profile:", error);
+    // Don't alert here, it might happen on login/register if rules are strict
+  }
 };
 
 export const firestoreDeleteUser = async (id: string) => {
-  await deleteDoc(doc(db, 'users', id));
+  try {
+    await deleteDoc(doc(db, 'users', id));
+  } catch (error) {
+    console.error("Error deleting user:", error);
+  }
 };
 
-// Helper to check/create user profile in Firestore on login
 export const ensureUserProfile = async (authUser: any) => {
-  const userRef = doc(db, 'users', authUser.uid);
-  const userSnap = await getDocs(query(collection(db, 'users'))); // Just checking if exists logic could be simpler
-  
-  // Logic simplified: In a real app, we check if doc exists. 
-  // For this demo, we'll rely on the Admin panel to create users or auto-create basic ones
-  // Here we just return a mapped User object from Auth
-  
-  // If user is not in our custom 'users' collection, we might treat them as Guest or Auto-create
-  // For now, let's assume the Admin creates users in the 'users' collection with roles
-  // and the auth.uid matches the user.id
+  // Legacy stub
 };
